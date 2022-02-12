@@ -1,0 +1,6 @@
+domain: minestack.io
+layout:
+- go.kubebuilder.io/v3
+projectName: minestack-operator
+repo: github.com/minestack/minestack-operator
+version: "3"
