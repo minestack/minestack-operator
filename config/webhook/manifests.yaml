@@ -1,0 +1,54 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-minecraft-minestack-io-v1alpha1-minecraftserverinstance
+  failurePolicy: Fail
+  name: mminecraftserverinstance.minecraft.v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - minecraft.minestack.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - minecraftserverinstances
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-minecraft-minestack-io-v1alpha1-minecraftserverinstance
+  failurePolicy: Fail
+  name: vminecraftserverinstance.minecraft.v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - minecraft.minestack.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - minecraftserverinstances
+  sideEffects: None
