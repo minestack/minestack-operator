@@ -1,6 +1,7 @@
 # -*- mode: Python -*-
 
 # set defaults
+
 settings = {
     'preload_images_for_kind': True
 }
@@ -10,6 +11,8 @@ settings.update(read_json(
     "tilt-settings.json",
     default={},
 ))
+
+default_registry(settings.get('default_registry', 'ttl.sh/'+os.getenv('USER')))
 
 
 def deploy_operator():
