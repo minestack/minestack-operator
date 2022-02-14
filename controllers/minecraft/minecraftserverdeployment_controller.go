@@ -161,6 +161,7 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 	upToDatePods := int32(0)
 	availablePods := int32(0)
 
+	var failedPods []corev1.Pod
 	var needsUpdate []corev1.Pod
 	for _, pod := range pods {
 		if pod.DeletionTimestamp.IsZero() {
@@ -178,10 +179,21 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 		} else {
 			upToDatePods += 1
 		}
+
+		if pod.Status.Phase == corev1.PodFailed {
+			failedPods = append(failedPods, pod)
+		}
 	}
 
 	if availablePods == int32(requestedReplicas) && len(needsUpdate) > 0 {
 		err := r.Delete(ctx, &needsUpdate[0])
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	for _, failedPods := range failedPods {
+		err := r.Delete(ctx, &failedPods)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
