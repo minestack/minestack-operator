@@ -6,9 +6,21 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - minecraft.minestack.io
+  - ""
   resources:
-  - minecraftserverinstances
+  - events
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
   verbs:
   - create
   - delete
@@ -20,13 +32,25 @@ rules:
 - apiGroups:
   - minecraft.minestack.io
   resources:
-  - minecraftserverinstances/finalizers
+  - minecraftserverdeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftserverdeployments/finalizers
   verbs:
   - update
 - apiGroups:
   - minecraft.minestack.io
   resources:
-  - minecraftserverinstances/status
+  - minecraftserverdeployments/status
   verbs:
   - get
   - patch

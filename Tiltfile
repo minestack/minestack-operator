@@ -12,6 +12,7 @@ settings.update(read_json(
     default={},
 ))
 
+allow_k8s_contexts(settings.get('allow_k8s_contexts', 'default'))
 default_registry(settings.get('default_registry', 'ttl.sh/'+os.getenv('USER')))
 
 

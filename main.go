@@ -78,15 +78,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&minecraftcontrollers.MinecraftServerInstanceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err = (&minecraftcontrollers.MinecraftServerDeploymentReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("MinecraftServerDeployment"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MinecraftServerInstance")
+		setupLog.Error(err, "unable to create controller", "controller", "MinecraftServerDeployment")
 		os.Exit(1)
 	}
-	if err = (&minecraftv1alpha1.MinecraftServerInstance{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "MinecraftServerInstance")
+	if err = (&minecraftv1alpha1.MinecraftServerDeployment{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MinecraftServerDeployment")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

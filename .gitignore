@@ -27,3 +27,6 @@ testbin/*
 # tilt
 tilt.d
 tilt-settings.json
+
+# kubernetes
+kubeconfig

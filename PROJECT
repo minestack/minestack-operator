@@ -11,7 +11,7 @@ resources:
   controller: true
   domain: minestack.io
   group: minecraft
-  kind: MinecraftServerInstance
+  kind: MinecraftServerDeployment
   path: github.com/minestack/minestack-operator/apis/minecraft/v1alpha1
   version: v1alpha1
   webhooks:

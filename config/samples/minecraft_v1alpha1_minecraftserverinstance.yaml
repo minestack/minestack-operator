@@ -1,6 +1,0 @@
-apiVersion: minecraft.minestack.io/v1alpha1
-kind: MinecraftServerInstance
-metadata:
-  name: minecraftserverinstance-sample
-spec:
-  # TODO(user): Add fields here
