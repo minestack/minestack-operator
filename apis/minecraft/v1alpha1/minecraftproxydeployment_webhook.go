@@ -60,8 +60,8 @@ func (r *MinecraftProxyDeployment) ValidateCreate() error {
 
 	minecraftproxydeploymentlog.Info("validate create", "name", r.Name)
 
-	if len(r.Name) > 63 {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), r.Name, "Length must be less than 63 characters"))
+	if len(r.Name) > 58 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), r.Name, "Length must be less than 58 characters"))
 	}
 
 	if len(r.Spec.Template.Spec.ServerGroups) == 0 {

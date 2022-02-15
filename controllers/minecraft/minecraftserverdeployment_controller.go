@@ -245,7 +245,7 @@ func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd 
 func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.MinecraftServerDeployment) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s-", msd.Name),
+			GenerateName: fmt.Sprintf("msd-%s-", msd.Name),
 			Namespace:    msd.Namespace,
 			Labels:       msd.Spec.Template.Labels,
 		},

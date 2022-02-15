@@ -1,7 +1,7 @@
 apiVersion: minecraft.minestack.io/v1alpha1
 kind: MinecraftServerDeployment
 metadata:
-  name: minecraftserverdeployment-sample
+  name: sample
 spec:
   replicas: 3
   selector:

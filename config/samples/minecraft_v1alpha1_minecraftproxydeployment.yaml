@@ -1,6 +1,28 @@
 apiVersion: minecraft.minestack.io/v1alpha1
 kind: MinecraftProxyDeployment
 metadata:
-  name: minecraftproxydeployment-sample
+  name: sample
 spec:
-  # TODO(user): Add fields here
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample
+  template:
+    metadata:
+      labels:
+        app: sample
+    spec:
+      image: ttl.sh/minestack/velocity-f8cefdfa-0527-41c8-86d4-98382d7dbbc8:24h
+      resources:
+        requests:
+          cpu: 1
+          memory: 2Gi
+        limits:
+          cpu: 1
+          memory: 4Gi
+      JVMHeap: 2Gi
+      serverGroups:
+        - name: sample
+          selector:
+            matchLabels:
+              app: sample
