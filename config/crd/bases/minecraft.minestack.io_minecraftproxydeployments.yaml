@@ -169,7 +169,9 @@ spec:
                         items:
                           properties:
                             name:
+                              maxLength: 256
                               minLength: 1
+                              pattern: ^([a-z]+)$
                               type: string
                             selector:
                               description: A label selector is a label query over

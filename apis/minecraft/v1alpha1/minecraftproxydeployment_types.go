@@ -28,6 +28,8 @@ import (
 type MinecraftProxyGroupSelector struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=256
+	// +kubebuilder:validation:Pattern:=`^([a-z]+)$`
 	Name string `json:"name"`
 
 	// +kubebuilder:validation:Required
