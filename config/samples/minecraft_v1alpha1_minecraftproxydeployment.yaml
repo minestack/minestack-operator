@@ -1,0 +1,6 @@
+apiVersion: minecraft.minestack.io/v1alpha1
+kind: MinecraftProxyDeployment
+metadata:
+  name: minecraftproxydeployment-sample
+spec:
+  # TODO(user): Add fields here

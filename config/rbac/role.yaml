@@ -30,6 +30,44 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftproxydeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftproxydeployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftproxydeployments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - minecraft.minestack.io
   resources:
   - minecraftserverdeployments

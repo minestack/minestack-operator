@@ -1,0 +1,24 @@
+# permissions for end users to edit minecraftproxydeployments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: minecraftproxydeployment-editor-role
+rules:
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftproxydeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - minecraft.minestack.io
+  resources:
+  - minecraftproxydeployments/status
+  verbs:
+  - get

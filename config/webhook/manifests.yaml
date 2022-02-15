@@ -11,6 +11,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-minecraft-minestack-io-v1alpha1-minecraftproxydeployment
+  failurePolicy: Fail
+  name: mminecraftproxydeployment.v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - minecraft.minestack.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - minecraftproxydeployments
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-minecraft-minestack-io-v1alpha1-minecraftserverdeployment
   failurePolicy: Fail
   name: mminecraftserverdeployment.v1alpha1.kb.io
@@ -38,9 +58,29 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-minecraft-minestack-io-v1alpha1-minecraftproxydeployment
+  failurePolicy: Fail
+  name: vminecraftproxydeployment.v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - minecraft.minestack.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - minecraftproxydeployments
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-minecraft-minestack-io-v1alpha1-minecraftserverdeployment
   failurePolicy: Fail
-  name: vminecraftserverdeployment.kb.io
+  name: vminecraftserverdeployment.v1alpha1.kb.io
   rules:
   - apiGroups:
     - minecraft.minestack.io

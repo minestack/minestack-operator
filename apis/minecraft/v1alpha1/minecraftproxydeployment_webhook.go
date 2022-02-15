@@ -28,9 +28,9 @@ import (
 )
 
 // log is for logging in this package.
-var minecraftserverdeploymentlog = logf.Log.WithName("minecraftserverdeployment-resource")
+var minecraftproxydeploymentlog = logf.Log.WithName("minecraftproxydeployment-resource")
 
-func (r *MinecraftServerDeployment) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (r *MinecraftProxyDeployment) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
@@ -38,30 +38,34 @@ func (r *MinecraftServerDeployment) SetupWebhookWithManager(mgr ctrl.Manager) er
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-// +kubebuilder:webhook:path=/mutate-minecraft-minestack-io-v1alpha1-minecraftserverdeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=minecraft.minestack.io,resources=minecraftserverdeployments,verbs=create;update,versions=v1alpha1,name=mminecraftserverdeployment.v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-minecraft-minestack-io-v1alpha1-minecraftproxydeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=minecraft.minestack.io,resources=minecraftproxydeployments,verbs=create;update,versions=v1alpha1,name=mminecraftproxydeployment.v1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &MinecraftServerDeployment{}
+var _ webhook.Defaulter = &MinecraftProxyDeployment{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MinecraftServerDeployment) Default() {
-	minecraftserverdeploymentlog.Info("default", "name", r.Name)
+func (r *MinecraftProxyDeployment) Default() {
+	minecraftproxydeploymentlog.Info("default", "name", r.Name)
 
 	// TODO(user): fill in your defaulting logic.
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// +kubebuilder:webhook:path=/validate-minecraft-minestack-io-v1alpha1-minecraftserverdeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=minecraft.minestack.io,resources=minecraftserverdeployments,verbs=create;update,versions=v1alpha1,name=vminecraftserverdeployment.v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-minecraft-minestack-io-v1alpha1-minecraftproxydeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=minecraft.minestack.io,resources=minecraftproxydeployments,verbs=create;update,versions=v1alpha1,name=vminecraftproxydeployment.v1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &MinecraftServerDeployment{}
+var _ webhook.Validator = &MinecraftProxyDeployment{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MinecraftServerDeployment) ValidateCreate() error {
+func (r *MinecraftProxyDeployment) ValidateCreate() error {
 	var allErrs field.ErrorList
 
-	minecraftserverdeploymentlog.Info("validate create", "name", r.Name)
+	minecraftproxydeploymentlog.Info("validate create", "name", r.Name)
 
 	if len(r.Name) > 63 {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), r.Name, "Length must be less than 63 characters"))
+	}
+
+	if len(r.Spec.Template.Spec.ServerGroups) == 0 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("template").Child("spec").Child("serverGroups"), 0, "must have at least one server group defined"))
 	}
 
 	// TODO: validate Spec.Selector.MatchExpressions is not given
@@ -77,20 +81,20 @@ func (r *MinecraftServerDeployment) ValidateCreate() error {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MinecraftServerDeployment) ValidateUpdate(old runtime.Object) error {
+func (r *MinecraftProxyDeployment) ValidateUpdate(old runtime.Object) error {
 	var allErrs field.ErrorList
 
-	minecraftserverdeploymentlog.Info("validate update", "name", r.Name)
+	minecraftproxydeploymentlog.Info("validate update", "name", r.Name)
 
-	oldMSD := old.(*MinecraftServerDeployment)
+	oldMPD := old.(*MinecraftServerDeployment)
 
 	// TODO: all validation from create
 
-	if equality.Semantic.DeepEqual(oldMSD.Spec.Template.ObjectMeta.Labels, r.Spec.Template.ObjectMeta.Labels) == false {
+	if equality.Semantic.DeepEqual(oldMPD.Spec.Template.ObjectMeta.Labels, r.Spec.Template.ObjectMeta.Labels) == false {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("template").Child("metadata").Child("labels"), "Cannot change template labels"))
 	}
 
-	if equality.Semantic.DeepEqual(oldMSD.Spec.Selector, r.Spec.Selector) == false {
+	if equality.Semantic.DeepEqual(oldMPD.Spec.Selector, r.Spec.Selector) == false {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("selector"), "Cannot change selector"))
 	}
 
@@ -102,8 +106,8 @@ func (r *MinecraftServerDeployment) ValidateUpdate(old runtime.Object) error {
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MinecraftServerDeployment) ValidateDelete() error {
-	minecraftserverdeploymentlog.Info("validate delete", "name", r.Name)
+func (r *MinecraftProxyDeployment) ValidateDelete() error {
+	minecraftproxydeploymentlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil

@@ -90,6 +90,18 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MinecraftServerDeployment")
 		os.Exit(1)
 	}
+	if err = (&minecraftcontrollers.MinecraftProxyDeploymentReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("MinecraftProxyDeployment"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MinecraftProxyDeployment")
+		os.Exit(1)
+	}
+	if err = (&minecraftv1alpha1.MinecraftProxyDeployment{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MinecraftProxyDeployment")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

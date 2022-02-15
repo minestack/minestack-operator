@@ -25,6 +25,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/minestack/minestack-operator/pkg/api/v1/pod_util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -50,6 +51,7 @@ type MinecraftServerDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftserverdeployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftserverdeployments/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -60,22 +62,94 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      msd.Name,
+			Namespace: msd.Namespace,
+		},
+	}
+
+	operation, err := controllerutil.CreateOrUpdate(ctx, r.Client, svc, func() error {
+		err := controllerutil.SetControllerReference(msd, svc, r.Scheme)
+		if err != nil {
+			return err
+		}
+
+		svc.Labels = msd.Spec.Template.Labels
+		svc.Labels["minestack.io/type"] = "minecraft"
+		svc.Labels["minestack.io/deployment"] = msd.Name
+
+		svc.Spec.Selector = msd.Spec.Selector.MatchLabels
+		svc.Spec.Selector["minestack.io/type"] = "minecraft"
+		svc.Spec.Selector["minestack.io/deployment"] = msd.Name
+
+		svc.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:       "minecraft",
+				Protocol:   corev1.ProtocolTCP,
+				Port:       25565,
+				TargetPort: intstr.FromString("minecraft"),
+			},
+		}
+
+		svc.Spec.ClusterIP = corev1.ClusterIPNone
+		svc.Spec.Type = corev1.ServiceTypeClusterIP
+		svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+
+		return nil
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if operation != controllerutil.OperationResultNone {
+		return ctrl.Result{}, nil
+	}
+
+	result, err := r.podLogic(ctx, msd)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if result.IsZero() == false {
+		return result, nil
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd *minecraftv1alpha1.MinecraftServerDeployment) (ctrl.Result, error) {
 	requestedReplicas := int(msd.Spec.Replicas)
 
-	templateHasher := fnv.New32a()
-	templateHasher.Reset()
+	controllerHasher := fnv.New32a()
+	controllerHasher.Reset()
 	printer := spew.ConfigState{
 		Indent:         " ",
 		SortKeys:       true,
 		DisableMethods: true,
 		SpewKeys:       true,
 	}
-	_, err = printer.Fprintf(templateHasher, "%#v", msd.Spec.Template)
+	_, err := printer.Fprintf(controllerHasher, "%#v", msd.Spec.Template)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	templateHash := rand.SafeEncodeString(fmt.Sprint(templateHasher.Sum32()))
+	podToCreate, err := r.formPod(msd)
+	_, err = printer.Fprintf(controllerHasher, "%#v", podToCreate)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	controllerHash := rand.SafeEncodeString(fmt.Sprint(controllerHasher.Sum32()))
+	podToCreate.Labels["minestack.io/controller-hash"] = controllerHash
+
+	// map of labels to string for kubectl or other parsing
+	// labels.SelectorFromSet(msd.Spec.Selector.MatchLabels).String()
+
+	// labels from string to selector to list
+	// selector, err := labels.Parse("")
+	// err = r.List(ctx, podList, client.MatchingLabelsSelector{Selector: selector})
 
 	podList := &corev1.PodList{}
 	err = r.List(ctx, podList, client.MatchingLabels(msd.Spec.Selector.MatchLabels))
@@ -101,57 +175,7 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 	}
 
 	if requestedReplicas > foundReplicas {
-		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: fmt.Sprintf("%s-", msd.Name),
-				Namespace:    msd.Namespace,
-				Labels:       msd.Spec.Template.Labels,
-			},
-			Spec: corev1.PodSpec{
-				RestartPolicy: corev1.RestartPolicyNever,
-				Containers: []corev1.Container{
-					{
-						Name:            "minecraft",
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Image:           msd.Spec.Template.Spec.Image,
-						Env: []corev1.EnvVar{
-							{
-								Name:  "JVM_HEAP",
-								Value: fmt.Sprintf("%d", msd.Spec.Template.Spec.JVMHeap.Value()),
-							},
-							{
-								Name:  "JAVA_ARGS",
-								Value: msd.Spec.Template.Spec.JavaArgs,
-							},
-						},
-						Resources: msd.Spec.Template.Spec.Resources,
-						ReadinessProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								TCPSocket: &corev1.TCPSocketAction{
-									Port: intstr.FromInt(25565),
-								},
-							},
-							InitialDelaySeconds: 30,
-							TimeoutSeconds:      5,
-							PeriodSeconds:       10,
-							SuccessThreshold:    5,
-							FailureThreshold:    1,
-						},
-					},
-				},
-			},
-		}
-
-		pod.Labels["minestack.io/type"] = "minecraft"
-		pod.Labels["minestack.io/deployment"] = msd.Name
-		pod.Labels["minestack.io/deployment-template-hash"] = templateHash
-
-		err := controllerutil.SetControllerReference(msd, pod, r.Scheme)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		err = r.Create(ctx, pod)
+		err = r.Create(ctx, podToCreate)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -174,7 +198,7 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 			}
 		}
 
-		if pod.Labels["minestack.io/deployment-template-hash"] != templateHash {
+		if pod.Labels["minestack.io/controller-hash"] != controllerHash {
 			needsUpdate = append(needsUpdate, pod)
 		} else {
 			upToDatePods += 1
@@ -199,15 +223,83 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 		}
 	}
 
-	msd.Status.ReadyReplicas = readyPods
-	msd.Status.UpdatedReplicas = upToDatePods
-	msd.Status.AvailableReplicas = availablePods
-	err = r.Status().Update(ctx, msd)
-	if err != nil {
-		return ctrl.Result{}, err
+	newStatus := minecraftv1alpha1.MinecraftServerDeploymentStatus{
+		AvailableReplicas: availablePods,
+		ReadyReplicas:     readyPods,
+		Replicas:          msd.Spec.Replicas,
+		UpdatedReplicas:   upToDatePods,
 	}
 
+	if equality.Semantic.DeepEqual(newStatus, msd.Status) == false {
+		msd.Status = newStatus
+		err = r.Status().Update(ctx, msd)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	}
 	return ctrl.Result{}, nil
+}
+
+func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.MinecraftServerDeployment) (*corev1.Pod, error) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-", msd.Name),
+			Namespace:    msd.Namespace,
+			Labels:       msd.Spec.Template.Labels,
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{
+				{
+					Name:            "minecraft",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Image:           msd.Spec.Template.Spec.Image,
+					Env: []corev1.EnvVar{
+						{
+							Name:  "JVM_HEAP",
+							Value: fmt.Sprintf("%d", msd.Spec.Template.Spec.JVMHeap.Value()),
+						},
+						{
+							Name:  "JAVA_ARGS",
+							Value: msd.Spec.Template.Spec.JavaArgs,
+						},
+					},
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "minecraft",
+							ContainerPort: 25565,
+							Protocol:      corev1.ProtocolTCP,
+						},
+					},
+					Resources: msd.Spec.Template.Spec.Resources,
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							TCPSocket: &corev1.TCPSocketAction{
+								Port: intstr.FromInt(25565),
+							},
+						},
+						InitialDelaySeconds: 30,
+						TimeoutSeconds:      5,
+						PeriodSeconds:       10,
+						SuccessThreshold:    5,
+						FailureThreshold:    1,
+					},
+				},
+			},
+		},
+	}
+
+	pod.Labels["minestack.io/type"] = "minecraft"
+	pod.Labels["minestack.io/deployment"] = msd.Name
+
+	err := controllerutil.SetControllerReference(msd, pod, r.Scheme)
+	if err != nil {
+		return nil, err
+	}
+
+	return pod, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -215,5 +307,6 @@ func (r *MinecraftServerDeploymentReconciler) SetupWithManager(mgr ctrl.Manager)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&minecraftv1alpha1.MinecraftServerDeployment{}).
 		Owns(&corev1.Pod{}).
+		Owns(&corev1.Service{}).
 		Complete(r)
 }

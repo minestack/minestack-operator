@@ -18,4 +18,17 @@ resources:
     defaulting: true
     validation: true
     webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: minestack.io
+  group: minecraft
+  kind: MinecraftProxyDeployment
+  path: github.com/minestack/minestack-operator/apis/minecraft/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"
