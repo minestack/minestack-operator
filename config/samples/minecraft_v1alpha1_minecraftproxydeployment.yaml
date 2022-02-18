@@ -3,7 +3,7 @@ kind: MinecraftProxyDeployment
 metadata:
   name: sample
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: sample
@@ -12,15 +12,15 @@ spec:
       labels:
         app: sample
     spec:
-      image: ttl.sh/minestack/velocity-f8cefdfa-0527-41c8-86d4-98382d7dbbc8:24h
+      image: ttl.sh/minestack/velocity-910bd61c-b125-415f-bce2-1ecc5f31b4aa:24h
       resources:
         requests:
-          cpu: 1
-          memory: 2Gi
+          cpu: 200m
+          memory: 1Gi
         limits:
-          cpu: 1
-          memory: 4Gi
-      JVMHeap: 2Gi
+          cpu: 200m
+          memory: 1Gi
+      JVMHeap: 512Mi
       serverGroups:
         - name: sample
           selector:

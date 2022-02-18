@@ -65,7 +65,7 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      msd.Name,
+			Name:      fmt.Sprintf("msd-%s", msd.Name),
 			Namespace: msd.Namespace,
 		},
 	}
@@ -286,8 +286,10 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 						SuccessThreshold:    5,
 						FailureThreshold:    1,
 					},
+					VolumeMounts: msd.Spec.Template.Spec.VolumeMounts,
 				},
 			},
+			Volumes: msd.Spec.Template.Spec.Volumes,
 		},
 	}
 

@@ -86,7 +86,7 @@ func (r *MinecraftProxyDeployment) ValidateUpdate(old runtime.Object) error {
 
 	minecraftproxydeploymentlog.Info("validate update", "name", r.Name)
 
-	oldMPD := old.(*MinecraftServerDeployment)
+	oldMPD := old.(*MinecraftProxyDeployment)
 
 	// TODO: all validation from create
 

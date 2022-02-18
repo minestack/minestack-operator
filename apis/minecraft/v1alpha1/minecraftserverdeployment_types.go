@@ -38,6 +38,14 @@ type MinecraftServerSpec struct {
 
 	// +kubebuilder:validation:Optional
 	JavaArgs string `json:"javaArgs"`
+
+	// +kubebuilder:validation:Optional
+	// +nullable
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts"`
+
+	// +kubebuilder:validation:Optional
+	// +nullable
+	Volumes []corev1.Volume `json:"volumes"`
 }
 
 type MinecraftServerTemplate struct {
