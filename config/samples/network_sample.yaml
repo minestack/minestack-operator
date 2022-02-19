@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: test-network-velocity
+  labels:
+    network: test
 stringData:
   velocity.toml: |-
     config-version = "1.0"
@@ -17,8 +19,8 @@ stringData:
     ping-passthrough = "DISABLED"
     
     [servers]
-    unknown = "127.0.0.1:25565"
-    try = ["unknown"]
+    lobby = "127.0.0.1:25565"
+    try = ["lobby"]
     
     [forced-hosts]
     
@@ -50,40 +52,44 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: test-network
+      network: test
   template:
     metadata:
       labels:
-        app: test-network
+        network: test
     spec:
-      image: ttl.sh/minestack/velocity-910bd61c-b125-415f-bce2-1ecc5f31b4aa:24h
+      image: ttl.sh/minestack/velocity-f7d87d47-5080-4b96-ac8c-5e18021e4642:24h
       resources:
         requests:
-          cpu: 200m
+          cpu: 1
           memory: 1Gi
         limits:
-          cpu: 200m
+          cpu: 1
           memory: 1Gi
       JVMHeap: 512Mi
       serverGroups:
-        - name: sample
+        - name: lobby
           selector:
             matchLabels:
-              app: test-network
+              network: test
+              group: lobby
       volumeMounts:
-        - name: test-network-velocity-config
+        - name: test-network-velocity-secret
           mountPath: /home/minecraft/velocity.toml
           subPath: velocity.toml
       volumes:
-        - name: test-network-velocity-config
+        - name: test-network-velocity-secret
           secret:
             secretName: test-network-velocity
 ---
 apiVersion: v1
-kind: Secret
+kind: ConfigMap
 metadata:
   name: test-network-lobby
-stringData:
+  labels:
+    network: test
+    group: lobby
+data:
   server.properties: |-
     enable-jmx-monitoring=false
     rcon.port=25575
@@ -134,6 +140,15 @@ stringData:
     resource-pack-sha1=
     spawn-protection=16
     max-world-size=29999984
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-network-lobby
+  labels:
+    network: test
+    group: lobby
+stringData:
   paper.yml: |-
     verbose: false
     timings:
@@ -479,32 +494,37 @@ kind: MinecraftServerDeployment
 metadata:
   name: test-network-lobby
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: test-network
+      network: test
+      group: lobby
   template:
     metadata:
       labels:
-        app: test-network
+        network: test
+        group: lobby
     spec:
-      image: ttl.sh/minestack/papermc-f8cefdfa-0527-41c8-86d4-98382d7dbbc8:24h
+      image: ttl.sh/minestack/papermc-c094eeae-2c21-4198-bd3f-d13f7927e1b1:24h
       resources:
         requests:
-          cpu: 1
+          cpu: 2
           memory: 4Gi
         limits:
-          cpu: 1
+          cpu: 2
           memory: 4Gi
       JVMHeap: 2Gi
       volumeMounts:
         - name: test-network-lobby-config
           mountPath: /home/minecraft/server.properties
           subPath: server.properties
-        - name: test-network-lobby-config
+        - name: test-network-lobby-secret
           mountPath: /home/minecraft/paper.yml
           subPath: paper.yml
       volumes:
         - name: test-network-lobby-config
+          configMap:
+            name: test-network-lobby
+        - name: test-network-lobby-secret
           secret:
             secretName: test-network-lobby

@@ -27,10 +27,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -52,7 +54,7 @@ type MinecraftProxyDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftproxydeployments/finalizers,verbs=update
 
 func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	rLog := log.FromContext(ctx)
+	_ = log.FromContext(ctx)
 
 	mpd := &minecraftv1alpha1.MinecraftProxyDeployment{}
 	err := r.Get(ctx, req.NamespacedName, mpd)
@@ -68,7 +70,6 @@ func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	operation, err := controllerutil.CreateOrUpdate(ctx, r.Client, svc, func() error {
-		rLog.Info("BEFORE", "svc", *svc)
 		err := controllerutil.SetControllerReference(mpd, svc, r.Scheme)
 		if err != nil {
 			return err
@@ -82,6 +83,8 @@ func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req 
 		svc.Spec.Selector["minestack.io/type"] = "proxy"
 		svc.Spec.Selector["minestack.io/deployment"] = mpd.Name
 
+		svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+
 		if len(svc.Spec.Ports) != 1 {
 			svc.Spec.Ports = []corev1.ServicePort{{}}
 		}
@@ -94,7 +97,6 @@ func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req 
 		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
 		svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
 
-		rLog.Info("AFTER", "svc", *svc)
 		return nil
 	})
 	if err != nil {
@@ -241,6 +243,20 @@ func (r *MinecraftProxyDeploymentReconciler) podLogic(ctx context.Context, mpd *
 }
 
 func (r *MinecraftProxyDeploymentReconciler) formPod(mpd *minecraftv1alpha1.MinecraftProxyDeployment) (*corev1.Pod, error) {
+	var groupEnvs []corev1.EnvVar
+
+	for _, group := range mpd.Spec.Template.Spec.ServerGroups {
+		matchLabels := group.Selector.MatchLabels
+		matchLabels["minestack.io/type"] = "minecraft"
+
+		groupEnvs = append(groupEnvs,
+			corev1.EnvVar{
+				Name:  fmt.Sprintf("MINESTACK_SERVER_GROUP_%s", group.Name),
+				Value: labels.SelectorFromSet(matchLabels).String(),
+			},
+		)
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("mpd-%s-", mpd.Name),
@@ -248,13 +264,19 @@ func (r *MinecraftProxyDeploymentReconciler) formPod(mpd *minecraftv1alpha1.Mine
 			Labels:       mpd.Spec.Template.Labels,
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
+			EnableServiceLinks:            pointer.Bool(false),
+			TerminationGracePeriodSeconds: pointer.Int64(90),
+			RestartPolicy:                 corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
 					Name:            "minecraft",
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Image:           mpd.Spec.Template.Spec.Image,
-					Env: []corev1.EnvVar{
+					Env: append(groupEnvs, []corev1.EnvVar{
+						{
+							Name:  "MINESTACK_PROXY_NAME",
+							Value: mpd.Name,
+						},
 						{
 							Name:  "JVM_HEAP",
 							Value: fmt.Sprintf("%d", mpd.Spec.Template.Spec.JVMHeap.Value()),
@@ -263,11 +285,16 @@ func (r *MinecraftProxyDeploymentReconciler) formPod(mpd *minecraftv1alpha1.Mine
 							Name:  "JAVA_ARGS",
 							Value: mpd.Spec.Template.Spec.JavaArgs,
 						},
-					},
+					}...),
 					Ports: []corev1.ContainerPort{
 						{
 							Name:          "minecraft",
 							ContainerPort: 25565,
+							Protocol:      corev1.ProtocolTCP,
+						},
+						{
+							Name:          "health",
+							ContainerPort: 8081,
 							Protocol:      corev1.ProtocolTCP,
 						},
 					},

@@ -58,7 +58,7 @@ type MinecraftServerTemplate struct {
 // MinecraftServerDeploymentSpec defines the desired state of MinecraftServerDeployment
 type MinecraftServerDeploymentSpec struct {
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Minimum:=1
+	// +kubebuilder:validation:Minimum:=0
 	Replicas int32 `json:"replicas"`
 
 	// +kubebuilder:validation:Required

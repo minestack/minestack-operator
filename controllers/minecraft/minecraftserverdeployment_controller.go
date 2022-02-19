@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -250,13 +251,19 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 			Labels:       msd.Spec.Template.Labels,
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
+			EnableServiceLinks:            pointer.Bool(false),
+			TerminationGracePeriodSeconds: pointer.Int64(90),
+			RestartPolicy:                 corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
 					Name:            "minecraft",
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Image:           msd.Spec.Template.Spec.Image,
 					Env: []corev1.EnvVar{
+						{
+							Name:  "MINESTACK_SERVER_NAME",
+							Value: msd.Name,
+						},
 						{
 							Name:  "JVM_HEAP",
 							Value: fmt.Sprintf("%d", msd.Spec.Template.Spec.JVMHeap.Value()),
@@ -287,6 +294,18 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 						FailureThreshold:    1,
 					},
 					VolumeMounts: msd.Spec.Template.Spec.VolumeMounts,
+					Lifecycle: &corev1.Lifecycle{
+						PreStop: &corev1.LifecycleHandler{
+							Exec: &corev1.ExecAction{
+								Command: []string{
+									"/bin/bash",
+									"-c",
+									"/bin/sleep 30;", // Sleep so our endpoint is removed before we get deleted
+									"kill -n SIGTERM 1",
+								},
+							},
+						},
+					},
 				},
 			},
 			Volumes: msd.Spec.Template.Spec.Volumes,

@@ -72,7 +72,7 @@ type MinecraftProxyTemplate struct {
 // MinecraftProxyDeploymentSpec defines the desired state of MinecraftProxyDeployment
 type MinecraftProxyDeploymentSpec struct {
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Minimum:=1
+	// +kubebuilder:validation:Minimum:=0
 	Replicas int32 `json:"replicas"`
 
 	// +kubebuilder:validation:Required
