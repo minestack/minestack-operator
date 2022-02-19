@@ -58,25 +58,29 @@ spec:
       labels:
         network: test
     spec:
-      image: ttl.sh/minestack/velocity-f7d87d47-5080-4b96-ac8c-5e18021e4642:24h
-      resources:
-        requests:
-          cpu: 1
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 1Gi
-      JVMHeap: 512Mi
+      server:
+        image: ttl.sh/minestack/velocity-5b5b90bf-16d2-4828-a4a2-ff7c64bb7d33:24h
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+          limits:
+            cpu: 1
+            memory: 1Gi
+        JVMHeap: 512Mi
+        volumeMounts:
+          - name: test-network-velocity-secret
+            mountPath: /home/minecraft/velocity.toml
+            subPath: velocity.toml
+      sidecar:
+        image: ttl.sh/minestack/velocity-sidecar-0110722d-ce3b-4c58-a8d2-65a94e2d2d71:24h
+        resources: {}
       serverGroups:
         - name: lobby
           selector:
             matchLabels:
               network: test
               group: lobby
-      volumeMounts:
-        - name: test-network-velocity-secret
-          mountPath: /home/minecraft/velocity.toml
-          subPath: velocity.toml
       volumes:
         - name: test-network-velocity-secret
           secret:
@@ -513,7 +517,7 @@ spec:
         limits:
           cpu: 2
           memory: 4Gi
-      JVMHeap: 2Gi
+      JVMHeap: 3Gi
       volumeMounts:
         - name: test-network-lobby-config
           mountPath: /home/minecraft/server.properties

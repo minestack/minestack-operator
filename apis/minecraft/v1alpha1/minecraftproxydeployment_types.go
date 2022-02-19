@@ -36,7 +36,7 @@ type MinecraftProxyGroupSelector struct {
 	Selector *metav1.LabelSelector `json:"selector"`
 }
 
-type MinecraftProxySpec struct {
+type MinecraftProxyServer struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength:=1
 	Image string `json:"image"`
@@ -53,6 +53,23 @@ type MinecraftProxySpec struct {
 	// +kubebuilder:validation:Optional
 	// +nullable
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts"`
+}
+
+type MinecraftProxySidecar struct {
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength:=1
+	Image string `json:"image"`
+
+	// +kubebuilder:validation:Required
+	Resources corev1.ResourceRequirements `json:"resources"`
+}
+
+type MinecraftProxySpec struct {
+	// +kubebuilder:validation:Required
+	Server MinecraftProxyServer `json:"server"`
+
+	// +kubebuilder:validation:Required
+	Sidecar MinecraftProxySidecar `json:"sidecar"`
 
 	// +kubebuilder:validation:Optional
 	// +nullable

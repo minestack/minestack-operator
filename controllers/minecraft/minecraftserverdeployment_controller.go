@@ -53,6 +53,7 @@ type MinecraftServerDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftserverdeployments/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -205,12 +206,12 @@ func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd 
 			upToDatePods += 1
 		}
 
-		if pod.Status.Phase == corev1.PodFailed {
+		if pod.Status.Phase == corev1.PodFailed || pod_util.IsAContainerTerminated(&pod) {
 			failedPods = append(failedPods, pod)
 		}
 	}
 
-	if availablePods == int32(requestedReplicas) && len(needsUpdate) > 0 {
+	if (availablePods == 0 || (availablePods == int32(requestedReplicas))) && len(needsUpdate) > 0 {
 		err := r.Delete(ctx, &needsUpdate[0])
 		if err != nil {
 			return ctrl.Result{}, err
@@ -284,7 +285,7 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							TCPSocket: &corev1.TCPSocketAction{
-								Port: intstr.FromInt(25565),
+								Port: intstr.FromString("minecraft"),
 							},
 						},
 						InitialDelaySeconds: 30,
@@ -300,7 +301,7 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 								Command: []string{
 									"/bin/bash",
 									"-c",
-									"/bin/sleep 30;", // Sleep so our endpoint is removed before we get deleted
+									"/bin/sleep 10;", // Sleep so our endpoint is removed before we get deleted
 									"kill -n SIGTERM 1",
 								},
 							},

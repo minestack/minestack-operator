@@ -25,6 +25,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/minestack/minestack-operator/pkg/api/v1/pod_util"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -52,6 +53,8 @@ type MinecraftProxyDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftproxydeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftproxydeployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=minecraft.minestack.io,resources=minecraftproxydeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
 func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
@@ -62,6 +65,101 @@ func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Service
+	operation, err := r.svc(ctx, mpd)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if operation != controllerutil.OperationResultNone {
+		return ctrl.Result{}, nil
+	}
+
+	operation, err = r.rbac(ctx, mpd)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if operation != controllerutil.OperationResultNone {
+		return ctrl.Result{}, nil
+	}
+
+	// Pod
+	result, err := r.podLogic(ctx, mpd)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if result.IsZero() == false {
+		return result, nil
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *MinecraftProxyDeploymentReconciler) rbac(ctx context.Context, mpd *minecraftv1alpha1.MinecraftProxyDeployment) (controllerutil.OperationResult, error) {
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("mpd-%s", mpd.Name),
+			Namespace: mpd.Namespace,
+		},
+	}
+
+	operation, err := controllerutil.CreateOrUpdate(ctx, r.Client, roleBinding, func() error {
+		err := controllerutil.SetControllerReference(mpd, roleBinding, r.Scheme)
+		if err != nil {
+			return err
+		}
+
+		roleBinding.Subjects = []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				APIGroup:  "",
+				Name:      fmt.Sprintf("mpd-%s", mpd.Name),
+				Namespace: mpd.Namespace,
+			},
+		}
+
+		roleBinding.RoleRef = rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     "minestack-operator-sidecar-role", // TODO: take this name via a flag
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return controllerutil.OperationResultNone, err
+	}
+
+	if operation != controllerutil.OperationResultNone {
+		return operation, nil
+	}
+
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("mpd-%s", mpd.Name),
+			Namespace: mpd.Namespace,
+		},
+	}
+
+	operation, err = controllerutil.CreateOrUpdate(ctx, r.Client, serviceAccount, func() error {
+		err := controllerutil.SetControllerReference(mpd, serviceAccount, r.Scheme)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return controllerutil.OperationResultNone, err
+	}
+
+	return operation, nil
+}
+
+func (r *MinecraftProxyDeploymentReconciler) svc(ctx context.Context, mpd *minecraftv1alpha1.MinecraftProxyDeployment) (controllerutil.OperationResult, error) {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("mpd-%s", mpd.Name),
@@ -100,23 +198,10 @@ func (r *MinecraftProxyDeploymentReconciler) Reconcile(ctx context.Context, req 
 		return nil
 	})
 	if err != nil {
-		return ctrl.Result{}, err
+		return controllerutil.OperationResultNone, err
 	}
 
-	if operation != controllerutil.OperationResultNone {
-		return ctrl.Result{}, nil
-	}
-
-	result, err := r.podLogic(ctx, mpd)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if result.IsZero() == false {
-		return result, nil
-	}
-
-	return ctrl.Result{}, nil
+	return operation, nil
 }
 
 func (r *MinecraftProxyDeploymentReconciler) podLogic(ctx context.Context, mpd *minecraftv1alpha1.MinecraftProxyDeployment) (ctrl.Result, error) {
@@ -204,12 +289,12 @@ func (r *MinecraftProxyDeploymentReconciler) podLogic(ctx context.Context, mpd *
 			upToDatePods += 1
 		}
 
-		if pod.Status.Phase == corev1.PodFailed {
+		if pod.Status.Phase == corev1.PodFailed || pod_util.IsAContainerTerminated(&pod) {
 			failedPods = append(failedPods, pod)
 		}
 	}
 
-	if availablePods == int32(requestedReplicas) && len(needsUpdate) > 0 {
+	if (availablePods == 0 || (availablePods == int32(requestedReplicas))) && len(needsUpdate) > 0 {
 		err := r.Delete(ctx, &needsUpdate[0])
 		if err != nil {
 			return ctrl.Result{}, err
@@ -264,45 +349,38 @@ func (r *MinecraftProxyDeploymentReconciler) formPod(mpd *minecraftv1alpha1.Mine
 			Labels:       mpd.Spec.Template.Labels,
 		},
 		Spec: corev1.PodSpec{
+			ServiceAccountName:            fmt.Sprintf("mpd-%s", mpd.Name),
 			EnableServiceLinks:            pointer.Bool(false),
 			TerminationGracePeriodSeconds: pointer.Int64(90),
 			RestartPolicy:                 corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
-					Name:            "minecraft",
+					Name:            "sidecar",
 					ImagePullPolicy: corev1.PullIfNotPresent,
-					Image:           mpd.Spec.Template.Spec.Image,
+					Image:           mpd.Spec.Template.Spec.Sidecar.Image,
 					Env: append(groupEnvs, []corev1.EnvVar{
 						{
-							Name:  "MINESTACK_PROXY_NAME",
-							Value: mpd.Name,
-						},
-						{
-							Name:  "JVM_HEAP",
-							Value: fmt.Sprintf("%d", mpd.Spec.Template.Spec.JVMHeap.Value()),
-						},
-						{
-							Name:  "JAVA_ARGS",
-							Value: mpd.Spec.Template.Spec.JavaArgs,
+							Name: "NAMESPACE_NAME",
+							ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{
+									FieldPath: "metadata.namespace",
+								},
+							},
 						},
 					}...),
 					Ports: []corev1.ContainerPort{
-						{
-							Name:          "minecraft",
-							ContainerPort: 25565,
-							Protocol:      corev1.ProtocolTCP,
-						},
 						{
 							Name:          "health",
 							ContainerPort: 8081,
 							Protocol:      corev1.ProtocolTCP,
 						},
 					},
-					Resources: mpd.Spec.Template.Spec.Resources,
+					Resources: mpd.Spec.Template.Spec.Sidecar.Resources,
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
-							TCPSocket: &corev1.TCPSocketAction{
-								Port: intstr.FromInt(25565),
+							HTTPGet: &corev1.HTTPGetAction{
+								Path: "/readyz",
+								Port: intstr.FromString("health"),
 							},
 						},
 						InitialDelaySeconds: 30,
@@ -311,7 +389,59 @@ func (r *MinecraftProxyDeploymentReconciler) formPod(mpd *minecraftv1alpha1.Mine
 						SuccessThreshold:    5,
 						FailureThreshold:    1,
 					},
-					VolumeMounts: mpd.Spec.Template.Spec.VolumeMounts,
+					LivenessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path: "/healthz",
+								Port: intstr.FromString("health"),
+							},
+						},
+						InitialDelaySeconds: 30,
+						TimeoutSeconds:      5,
+						PeriodSeconds:       10,
+						SuccessThreshold:    1,
+						FailureThreshold:    3,
+					},
+				},
+				{
+					Name:            "minecraft",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Image:           mpd.Spec.Template.Spec.Server.Image,
+					Env: append(groupEnvs, []corev1.EnvVar{
+						{
+							Name:  "MINESTACK_PROXY_NAME",
+							Value: mpd.Name,
+						},
+						{
+							Name:  "JVM_HEAP",
+							Value: fmt.Sprintf("%d", mpd.Spec.Template.Spec.Server.JVMHeap.Value()),
+						},
+						{
+							Name:  "JAVA_ARGS",
+							Value: mpd.Spec.Template.Spec.Server.JavaArgs,
+						},
+					}...),
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "minecraft",
+							ContainerPort: 25565,
+							Protocol:      corev1.ProtocolTCP,
+						},
+					},
+					Resources: mpd.Spec.Template.Spec.Server.Resources,
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							TCPSocket: &corev1.TCPSocketAction{
+								Port: intstr.FromString("minecraft"),
+							},
+						},
+						InitialDelaySeconds: 30,
+						TimeoutSeconds:      5,
+						PeriodSeconds:       10,
+						SuccessThreshold:    5,
+						FailureThreshold:    1,
+					},
+					VolumeMounts: mpd.Spec.Template.Spec.Server.VolumeMounts,
 				},
 			},
 			Volumes: mpd.Spec.Template.Spec.Volumes,
@@ -335,5 +465,7 @@ func (r *MinecraftProxyDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) 
 		For(&minecraftv1alpha1.MinecraftProxyDeployment{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
 }

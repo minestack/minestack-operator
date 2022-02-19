@@ -7,6 +7,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func IsAContainerTerminated(pod *corev1.Pod) bool {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Terminated != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 // IsPodAvailable returns true if a pod is available; false otherwise.
 // Precondition for an available pod is that it must be ready. On top
 // of that, there are two cases when a pod can be considered available:
