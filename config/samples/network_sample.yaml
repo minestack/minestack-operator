@@ -543,7 +543,7 @@ kind: MinecraftServerDeployment
 metadata:
   name: test-network-fiz
 spec:
-  replicas: 3
+  replicas: 2
   ordinals: true
   selector:
     matchLabels:
