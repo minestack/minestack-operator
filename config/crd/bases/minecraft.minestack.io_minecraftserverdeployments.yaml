@@ -52,8 +52,11 @@ spec:
             description: MinecraftServerDeploymentSpec defines the desired state of
               MinecraftServerDeployment
             properties:
+              ordinals:
+                type: boolean
               replicas:
                 format: int32
+                maximum: 999
                 minimum: 0
                 type: integer
               selector:

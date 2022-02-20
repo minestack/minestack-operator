@@ -60,8 +60,8 @@ func (r *MinecraftServerDeployment) ValidateCreate() error {
 
 	minecraftserverdeploymentlog.Info("validate create", "name", r.Name)
 
-	if len(r.Name) > 58 {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), r.Name, "Length must be less than 58 characters"))
+	if len(r.Name) > 55 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), r.Name, "Length must be less than 55 characters"))
 	}
 
 	// TODO: validate Spec.Selector.MatchExpressions is not given
@@ -92,6 +92,10 @@ func (r *MinecraftServerDeployment) ValidateUpdate(old runtime.Object) error {
 
 	if equality.Semantic.DeepEqual(oldMSD.Spec.Selector, r.Spec.Selector) == false {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("selector"), "Cannot change selector"))
+	}
+
+	if oldMSD.Spec.Ordinals != r.Spec.Ordinals {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("ordinals"), "Cannot change ordinals"))
 	}
 
 	if len(allErrs) == 0 {

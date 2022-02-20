@@ -59,7 +59,11 @@ type MinecraftServerTemplate struct {
 type MinecraftServerDeploymentSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum:=0
+	// +kubebuilder:validation:Maximum:=999
 	Replicas int32 `json:"replicas"`
+
+	// +kubebuilder:validation:Optional
+	Ordinals bool `json:"ordinals"`
 
 	// +kubebuilder:validation:Required
 	Selector *metav1.LabelSelector `json:"selector"`

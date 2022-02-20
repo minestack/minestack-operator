@@ -254,7 +254,7 @@ func (r *MinecraftProxyDeploymentReconciler) podLogic(ctx context.Context, mpd *
 
 			err := r.Delete(ctx, &pod)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
 	}
@@ -297,14 +297,14 @@ func (r *MinecraftProxyDeploymentReconciler) podLogic(ctx context.Context, mpd *
 	if (availablePods == 0 || (availablePods == int32(requestedReplicas))) && len(needsUpdate) > 0 {
 		err := r.Delete(ctx, &needsUpdate[0])
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 
 	for _, failedPods := range failedPods {
 		err := r.Delete(ctx, &failedPods)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 

@@ -20,12 +20,15 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/minestack/minestack-operator/pkg/api/v1/pod_util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -109,7 +112,13 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 		return ctrl.Result{}, nil
 	}
 
-	result, err := r.podLogic(ctx, msd)
+	var result ctrl.Result
+	if msd.Spec.Ordinals {
+		result, err = r.podLogicOrdinals(ctx, msd)
+	} else {
+		result, err = r.podLogicGenerateName(ctx, msd)
+	}
+
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -121,67 +130,8 @@ func (r *MinecraftServerDeploymentReconciler) Reconcile(ctx context.Context, req
 	return ctrl.Result{}, nil
 }
 
-func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd *minecraftv1alpha1.MinecraftServerDeployment) (ctrl.Result, error) {
+func (r *MinecraftServerDeploymentReconciler) setStatus(ctx context.Context, msd *minecraftv1alpha1.MinecraftServerDeployment, controllerHash string, pods []corev1.Pod) (ctrl.Result, error) {
 	requestedReplicas := int(msd.Spec.Replicas)
-
-	controllerHasher := fnv.New32a()
-	controllerHasher.Reset()
-	printer := spew.ConfigState{
-		Indent:         " ",
-		SortKeys:       true,
-		DisableMethods: true,
-		SpewKeys:       true,
-	}
-	_, err := printer.Fprintf(controllerHasher, "%#v", msd.Spec.Template)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	podToCreate, err := r.formPod(msd)
-	_, err = printer.Fprintf(controllerHasher, "%#v", podToCreate)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	controllerHash := rand.SafeEncodeString(fmt.Sprint(controllerHasher.Sum32()))
-	podToCreate.Labels["minestack.io/controller-hash"] = controllerHash
-
-	// map of labels to string for kubectl or other parsing
-	// labels.SelectorFromSet(msd.Spec.Selector.MatchLabels).String()
-
-	// labels from string to selector to list
-	// selector, err := labels.Parse("")
-	// err = r.List(ctx, podList, client.MatchingLabelsSelector{Selector: selector})
-
-	podList := &corev1.PodList{}
-	err = r.List(ctx, podList, client.MatchingLabels(msd.Spec.Selector.MatchLabels))
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	pods := podList.Items
-	foundReplicas := len(pods)
-
-	if foundReplicas > requestedReplicas {
-
-		for i := 0; i < (foundReplicas - requestedReplicas); i++ {
-			pod := pods[(foundReplicas-1)-i]
-			if pod.DeletionTimestamp.IsZero() == false {
-				continue
-			}
-
-			err := r.Delete(ctx, &pod)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	if requestedReplicas > foundReplicas {
-		err = r.Create(ctx, podToCreate)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-	}
 
 	readyPods := int32(0)
 	upToDatePods := int32(0)
@@ -214,14 +164,14 @@ func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd 
 	if (availablePods == 0 || (availablePods == int32(requestedReplicas))) && len(needsUpdate) > 0 {
 		err := r.Delete(ctx, &needsUpdate[0])
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 
 	for _, failedPods := range failedPods {
 		err := r.Delete(ctx, &failedPods)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 
@@ -234,7 +184,7 @@ func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd 
 
 	if equality.Semantic.DeepEqual(newStatus, msd.Status) == false {
 		msd.Status = newStatus
-		err = r.Status().Update(ctx, msd)
+		err := r.Status().Update(ctx, msd)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -244,12 +194,159 @@ func (r *MinecraftServerDeploymentReconciler) podLogic(ctx context.Context, msd 
 	return ctrl.Result{}, nil
 }
 
+func (r *MinecraftServerDeploymentReconciler) podLogicOrdinals(ctx context.Context, msd *minecraftv1alpha1.MinecraftServerDeployment) (ctrl.Result, error) {
+	rLog := log.FromContext(ctx)
+	requestedReplicas := int(msd.Spec.Replicas)
+
+	controllerHasher := fnv.New32a()
+	controllerHasher.Reset()
+	printer := spew.ConfigState{
+		Indent:         " ",
+		SortKeys:       true,
+		DisableMethods: true,
+		SpewKeys:       true,
+	}
+	_, err := printer.Fprintf(controllerHasher, "%#v", msd.Spec.Template)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	podToCreate, err := r.formPod(msd)
+	_, err = printer.Fprintf(controllerHasher, "%#v", podToCreate)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	controllerHash := rand.SafeEncodeString(fmt.Sprint(controllerHasher.Sum32()))
+	podToCreate.Labels["minestack.io/controller-hash"] = controllerHash
+
+	podList := &corev1.PodList{}
+	err = r.List(ctx, podList, client.MatchingLabels(msd.Spec.Selector.MatchLabels))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	pods := podList.Items
+	foundReplicas := len(pods)
+
+	var overages []*corev1.Pod
+	currentOrdinals := make([]*corev1.Pod, msd.Spec.Replicas, msd.Spec.Replicas)
+	for _, pod := range pods {
+		podNameParts := strings.Split(pod.Name, "-")
+		ordinal, err := strconv.Atoi(podNameParts[len(podNameParts)-1])
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if ordinal >= cap(currentOrdinals) {
+			overages = append(overages, pod.DeepCopy())
+		} else {
+			currentOrdinals[ordinal] = pod.DeepCopy()
+		}
+	}
+
+	for _, pod := range overages {
+		if pod.DeletionTimestamp.IsZero() == false {
+			continue
+		}
+
+		rLog.Info("Deleting pod", "pod", &pod.Name)
+		err := r.Delete(ctx, pod)
+		if err != nil {
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if requestedReplicas > foundReplicas {
+		nextOrdinal := -1
+
+		for index, pod := range currentOrdinals {
+			if pod == nil {
+				nextOrdinal = index
+				break
+			}
+		}
+
+		if nextOrdinal == -1 {
+			return ctrl.Result{}, fmt.Errorf("could not find ordinal to create next pod at")
+		}
+
+		podToCreate.Name = fmt.Sprintf("msd-%s-%d", msd.Name, nextOrdinal)
+
+		err = r.Create(ctx, podToCreate)
+		if err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, err
+		}
+	}
+
+	return r.setStatus(ctx, msd, controllerHash, pods)
+}
+
+func (r *MinecraftServerDeploymentReconciler) podLogicGenerateName(ctx context.Context, msd *minecraftv1alpha1.MinecraftServerDeployment) (ctrl.Result, error) {
+	requestedReplicas := int(msd.Spec.Replicas)
+
+	controllerHasher := fnv.New32a()
+	controllerHasher.Reset()
+	printer := spew.ConfigState{
+		Indent:         " ",
+		SortKeys:       true,
+		DisableMethods: true,
+		SpewKeys:       true,
+	}
+	_, err := printer.Fprintf(controllerHasher, "%#v", msd.Spec.Template)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	podToCreate, err := r.formPod(msd)
+	_, err = printer.Fprintf(controllerHasher, "%#v", podToCreate)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	controllerHash := rand.SafeEncodeString(fmt.Sprint(controllerHasher.Sum32()))
+	podToCreate.Labels["minestack.io/controller-hash"] = controllerHash
+
+	podList := &corev1.PodList{}
+	err = r.List(ctx, podList, client.MatchingLabels(msd.Spec.Selector.MatchLabels))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	pods := podList.Items
+	foundReplicas := len(pods)
+
+	if foundReplicas > requestedReplicas {
+
+		for i := 0; i < (foundReplicas - requestedReplicas); i++ {
+			pod := pods[(foundReplicas-1)-i]
+			if pod.DeletionTimestamp.IsZero() == false {
+				continue
+			}
+
+			err := r.Delete(ctx, &pod)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
+		}
+	}
+
+	if requestedReplicas > foundReplicas {
+		err = r.Create(ctx, podToCreate)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	return r.setStatus(ctx, msd, controllerHash, pods)
+}
+
 func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.MinecraftServerDeployment) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("msd-%s-", msd.Name),
-			Namespace:    msd.Namespace,
-			Labels:       msd.Spec.Template.Labels,
+			Namespace: msd.Namespace,
+			Labels:    msd.Spec.Template.Labels,
 		},
 		Spec: corev1.PodSpec{
 			EnableServiceLinks:            pointer.Bool(false),
@@ -311,6 +408,11 @@ func (r *MinecraftServerDeploymentReconciler) formPod(msd *minecraftv1alpha1.Min
 			},
 			Volumes: msd.Spec.Template.Spec.Volumes,
 		},
+	}
+
+	// if no ordinals use generate name
+	if msd.Spec.Ordinals == false {
+		pod.GenerateName = fmt.Sprintf("msd-%s-", msd.Name)
 	}
 
 	pod.Labels["minestack.io/type"] = "minecraft"

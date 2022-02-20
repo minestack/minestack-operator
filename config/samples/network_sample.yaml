@@ -59,7 +59,7 @@ spec:
         network: test
     spec:
       server:
-        image: ttl.sh/minestack/velocity-5b5b90bf-16d2-4828-a4a2-ff7c64bb7d33:24h
+        image: ttl.sh/minestack/velocity-ecf1318e-6c21-4924-a94e-00aeda465382:24h
         resources:
           requests:
             cpu: 1
@@ -81,6 +81,11 @@ spec:
             matchLabels:
               network: test
               group: lobby
+        - name: fiz
+          selector:
+            matchLabels:
+              network: test
+              group: fiz
       volumes:
         - name: test-network-velocity-secret
           secret:
@@ -508,6 +513,47 @@ spec:
       labels:
         network: test
         group: lobby
+    spec:
+      image: ttl.sh/minestack/papermc-c094eeae-2c21-4198-bd3f-d13f7927e1b1:24h
+      resources:
+        requests:
+          cpu: 2
+          memory: 4Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+      JVMHeap: 3Gi
+      volumeMounts:
+        - name: test-network-lobby-config
+          mountPath: /home/minecraft/server.properties
+          subPath: server.properties
+        - name: test-network-lobby-secret
+          mountPath: /home/minecraft/paper.yml
+          subPath: paper.yml
+      volumes:
+        - name: test-network-lobby-config
+          configMap:
+            name: test-network-lobby
+        - name: test-network-lobby-secret
+          secret:
+            secretName: test-network-lobby
+---
+apiVersion: minecraft.minestack.io/v1alpha1
+kind: MinecraftServerDeployment
+metadata:
+  name: test-network-fiz
+spec:
+  replicas: 3
+  ordinals: true
+  selector:
+    matchLabels:
+      network: test
+      group: fiz
+  template:
+    metadata:
+      labels:
+        network: test
+        group: fiz
     spec:
       image: ttl.sh/minestack/papermc-c094eeae-2c21-4198-bd3f-d13f7927e1b1:24h
       resources:
